@@ -19,7 +19,8 @@ make -j8 | tee build.log &&
     echo -e "[PHW]${myGR}SUCCESS${myNC} to grub2-update"
 
 if [[ $? != 0 ]]; then
-    echo -e "[PHW]${myRED}FAIL${myNC} to kernel install"
+    echo -e "[PHW]${myRED}FAIL${myNC} to kernel install" &&
+        cd $CUR_DIR
 else
     [ "$myAnswer" == "y" ] && echo -e "After 5 second, reboot will proceed"
     reboot
