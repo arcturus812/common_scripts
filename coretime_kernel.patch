@@ -1,0 +1,258 @@
+diff -wbur -X excludes /root/kernel/linux-4.16.1.origin/.config /root/kernel/linux-4.16.1/.config
+--- /root/kernel/linux-4.16.1.origin/.config	2018-09-21 14:13:59.000000000 +0900
++++ /root/kernel/linux-4.16.1/.config	2020-01-27 11:44:27.394135351 +0900
+@@ -2160,7 +2160,7 @@
+ CONFIG_CDROM_PKTCDVD_BUFFERS=8
+ # CONFIG_CDROM_PKTCDVD_WCACHE is not set
+ CONFIG_ATA_OVER_ETH=m
+-CONFIG_XEN_BLKDEV_FRONTEND=m
++CONFIG_XEN_BLKDEV_FRONTEND=y
+ CONFIG_XEN_BLKDEV_BACKEND=m
+ CONFIG_VIRTIO_BLK=m
+ CONFIG_VIRTIO_BLK_SCSI=y
+@@ -2595,7 +2595,7 @@
+ CONFIG_DM_LOG_WRITES=m
+ CONFIG_DM_INTEGRITY=m
+ CONFIG_DM_ZONED=m
+-CONFIG_TARGET_CORE=y
++CONFIG_TARGET_CORE=m
+ CONFIG_TCM_IBLOCK=m
+ CONFIG_TCM_FILEIO=m
+ CONFIG_TCM_PSCSI=m
+@@ -3431,7 +3431,7 @@
+ CONFIG_IEEE802154_ADF7242=m
+ CONFIG_IEEE802154_CA8210=m
+ CONFIG_IEEE802154_CA8210_DEBUGFS=y
+-CONFIG_XEN_NETDEV_FRONTEND=m
++CONFIG_XEN_NETDEV_FRONTEND=y
+ CONFIG_XEN_NETDEV_BACKEND=m
+ CONFIG_VMXNET3=m
+ CONFIG_FUJITSU_ES=m
+@@ -7291,7 +7291,7 @@
+ # CONFIG_XEN_PVCALLS_BACKEND is not set
+ CONFIG_XEN_SCSI_BACKEND=m
+ CONFIG_XEN_PRIVCMD=m
+-CONFIG_XEN_ACPI_PROCESSOR=m
++CONFIG_XEN_ACPI_PROCESSOR=y
+ CONFIG_XEN_MCE_LOG=y
+ CONFIG_XEN_HAVE_PVMMU=y
+ CONFIG_XEN_EFI=y
+diff -wbur -X excludes /root/kernel/linux-4.16.1.origin/drivers/cpufreq/cpufreq.c /root/kernel/linux-4.16.1/drivers/cpufreq/cpufreq.c
+--- /root/kernel/linux-4.16.1.origin/drivers/cpufreq/cpufreq.c	2018-09-21 14:03:41.000000000 +0900
++++ /root/kernel/linux-4.16.1/drivers/cpufreq/cpufreq.c	2020-01-27 15:24:08.114348679 +0900
+@@ -37,6 +37,19 @@
+ {
+ 	return cpumask_empty(policy->cpus);
+ }
++/*
++ * [PHW] define various flags
++ */
++int phw_frequency[8] = {0, 0, 0, 0, 0, 0, 0, 0};
++int phw_KERNEL_ONDEMAND_ENABLED =   1;
++int phw_KERNEL_DEBUG_ENABLED =      0;
++int phw_KERNEL_DEBUG_CPU_TARGET =   1;
++int phw_KERNEL_DEBUG_PID_TARGET =   70000;
++EXPORT_SYMBOL(phw_frequency);
++EXPORT_SYMBOL(phw_KERNEL_ONDEMAND_ENABLED);
++EXPORT_SYMBOL(phw_KERNEL_DEBUG_ENABLED);
++EXPORT_SYMBOL(phw_KERNEL_DEBUG_CPU_TARGET);
++EXPORT_SYMBOL(phw_KERNEL_DEBUG_PID_TARGET);
+ 
+ /* Macros to iterate over CPU policies */
+ #define for_each_suitable_policy(__policy, __active)			 \
+@@ -1990,6 +2003,16 @@
+ 		return -EINVAL;
+ 
+ 	index = cpufreq_frequency_table_target(policy, target_freq, relation);
++    /*
++     * [PHW] print cpu frequency
++     */
++    if(phw_KERNEL_DEBUG_ENABLED && (int)policy->cpu == phw_KERNEL_DEBUG_CPU_TARGET){
++        trace_printk("[PHW]target_freq:%lu  index:%d\n", (unsigned int)target_freq, index);
++    }
++    /*
++     * [PHW] update frequency
++     */
++    phw_frequency[(int)policy->cpu] = index;
+ 
+ 	return __target_index(policy, index);
+ }
+diff -wbur -X excludes /root/kernel/linux-4.16.1.origin/drivers/cpufreq/cpufreq_ondemand.c /root/kernel/linux-4.16.1/drivers/cpufreq/cpufreq_ondemand.c
+--- /root/kernel/linux-4.16.1.origin/drivers/cpufreq/cpufreq_ondemand.c	2018-09-21 14:03:41.000000000 +0900
++++ /root/kernel/linux-4.16.1/drivers/cpufreq/cpufreq_ondemand.c	2020-01-27 15:24:09.306379275 +0900
+@@ -34,6 +34,14 @@
+ static unsigned int default_powersave_bias;
+ 
+ /*
++ * [PHW] GLOBAL VARIABLE AREA
++ */
++extern int phw_KERNEL_ONDEMAND_ENABLED;
++extern int phw_KERNEL_DEBUG_ENABLED;
++extern int phw_KERNEL_DEBUG_CPU_TARGET;
++extern int phw_KERNEL_DEBUG_PID_TARGET;
++
++/*
+  * Not all CPUs want IO time to be accounted as busy; this depends on how
+  * efficient idling at a higher frequency/voltage is.
+  * Pavel Machek says this is not so for various generations of AMD and old
+@@ -143,6 +151,12 @@
+ 	unsigned int load = dbs_update(policy);
+ 
+ 	dbs_info->freq_lo = 0;
++    /*
++     * [PHW] load is cpu usage, need to be monitored
++     */
++    if(cpuid == phw_KERNEL_DEBUG_CPU_TARGET && phw_KERNEL_DEBUG_ENABLED){
++        trace_printk("[PHW]current_load:%lu\n", (unsigned long)load);
++    }
+ 
+ 	/* Check for frequency increase */
+ 	if (load > dbs_data->up_threshold) {
+@@ -165,10 +179,14 @@
+ 			freq_next = od_ops.powersave_bias_target(policy,
+ 								 freq_next,
+ 								 CPUFREQ_RELATION_L);
+-
++        /*
++         * [PHW] disable ondemand governor's frequency modifying
++         */
++        if(phw_KERNEL_ONDEMAND_ENABLED){
+ 		__cpufreq_driver_target(policy, freq_next, CPUFREQ_RELATION_C);
+ 	}
+ }
++}
+ 
+ static unsigned int od_dbs_update(struct cpufreq_policy *policy)
+ {
+diff -wbur -X excludes /root/kernel/linux-4.16.1.origin/include/config/auto.conf /root/kernel/linux-4.16.1/include/config/auto.conf
+--- /root/kernel/linux-4.16.1.origin/include/config/auto.conf	2018-09-21 14:13:59.000000000 +0900
++++ /root/kernel/linux-4.16.1/include/config/auto.conf	2020-01-27 11:44:49.893863523 +0900
+@@ -2490,7 +2490,7 @@
+ CONFIG_KVM_GENERIC_DIRTYLOG_READ_PROTECT=y
+ CONFIG_SENSORS_MAX197=m
+ CONFIG_RAPIDIO_CHMAN=m
+-CONFIG_TARGET_CORE=y
++CONFIG_TARGET_CORE=m
+ CONFIG_VLSI_FIR=m
+ CONFIG_HID_XINMO=m
+ CONFIG_INFINIBAND_BNXT_RE=m
+@@ -2589,7 +2589,7 @@
+ CONFIG_HID_GREENASIA=m
+ CONFIG_ORINOCO_USB=m
+ CONFIG_TOUCHSCREEN_ILI210X=m
+-CONFIG_XEN_ACPI_PROCESSOR=m
++CONFIG_XEN_ACPI_PROCESSOR=y
+ CONFIG_INTEGRITY_ASYMMETRIC_KEYS=y
+ CONFIG_SERIAL_RP2_NR_UARTS=32
+ CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE=0x01b6
+@@ -4197,7 +4197,7 @@
+ CONFIG_USB_F_UAC1_LEGACY=m
+ CONFIG_ATA_VERBOSE_ERROR=y
+ CONFIG_ISDN_DRV_AVMB1_B1PCMCIA=m
+-CONFIG_XEN_BLKDEV_FRONTEND=m
++CONFIG_XEN_BLKDEV_FRONTEND=y
+ CONFIG_NF_CONNTRACK_SNMP=m
+ CONFIG_CM3232=m
+ CONFIG_GREYBUS_AUDIO=m
+@@ -5198,7 +5198,7 @@
+ CONFIG_ISDN_DIVAS_USERIDI=m
+ CONFIG_INTEL_MIC_CARD=m
+ CONFIG_DVB_LNBP21=m
+-CONFIG_XEN_NETDEV_FRONTEND=m
++CONFIG_XEN_NETDEV_FRONTEND=y
+ CONFIG_DVB_TDA10048=m
+ CONFIG_INPUT_FF_MEMLESS=m
+ CONFIG_PARAVIRT_CLOCK=y
+diff -wbur -X excludes /root/kernel/linux-4.16.1.origin/include/config/tristate.conf /root/kernel/linux-4.16.1/include/config/tristate.conf
+--- /root/kernel/linux-4.16.1.origin/include/config/tristate.conf	2018-09-21 14:13:59.000000000 +0900
++++ /root/kernel/linux-4.16.1/include/config/tristate.conf	2020-01-27 11:44:49.893863523 +0900
+@@ -1702,7 +1702,7 @@
+ CONFIG_INET6_AH=M
+ CONFIG_SENSORS_MAX197=M
+ CONFIG_RAPIDIO_CHMAN=M
+-CONFIG_TARGET_CORE=Y
++CONFIG_TARGET_CORE=M
+ CONFIG_VLSI_FIR=M
+ CONFIG_HID_XINMO=M
+ CONFIG_INFINIBAND_BNXT_RE=M
+@@ -1772,7 +1772,7 @@
+ CONFIG_HID_GREENASIA=M
+ CONFIG_ORINOCO_USB=M
+ CONFIG_TOUCHSCREEN_ILI210X=M
+-CONFIG_XEN_ACPI_PROCESSOR=M
++CONFIG_XEN_ACPI_PROCESSOR=Y
+ CONFIG_BACKLIGHT_DA903X=M
+ CONFIG_INTEL_POWERCLAMP=M
+ CONFIG_NFC_ST21NFCA_I2C=M
+@@ -2899,7 +2899,7 @@
+ CONFIG_HID_RMI=M
+ CONFIG_USB_F_UAC1_LEGACY=M
+ CONFIG_ISDN_DRV_AVMB1_B1PCMCIA=M
+-CONFIG_XEN_BLKDEV_FRONTEND=M
++CONFIG_XEN_BLKDEV_FRONTEND=Y
+ CONFIG_NF_CONNTRACK_SNMP=M
+ CONFIG_CM3232=M
+ CONFIG_GREYBUS_AUDIO=M
+@@ -3583,7 +3583,7 @@
+ CONFIG_ISDN_DIVAS_USERIDI=M
+ CONFIG_INTEL_MIC_CARD=M
+ CONFIG_DVB_LNBP21=M
+-CONFIG_XEN_NETDEV_FRONTEND=M
++CONFIG_XEN_NETDEV_FRONTEND=Y
+ CONFIG_DVB_TDA10048=M
+ CONFIG_INPUT_FF_MEMLESS=M
+ CONFIG_SND_SOC_FSL_SAI=M
+diff -wbur -X excludes /root/kernel/linux-4.16.1.origin/include/generated/autoconf.h /root/kernel/linux-4.16.1/include/generated/autoconf.h
+--- /root/kernel/linux-4.16.1.origin/include/generated/autoconf.h	2018-09-21 14:13:59.000000000 +0900
++++ /root/kernel/linux-4.16.1/include/generated/autoconf.h	2020-01-27 11:44:49.893863523 +0900
+@@ -2492,7 +2492,7 @@
+ #define CONFIG_KVM_GENERIC_DIRTYLOG_READ_PROTECT 1
+ #define CONFIG_SENSORS_MAX197_MODULE 1
+ #define CONFIG_RAPIDIO_CHMAN_MODULE 1
+-#define CONFIG_TARGET_CORE 1
++#define CONFIG_TARGET_CORE_MODULE 1
+ #define CONFIG_VLSI_FIR_MODULE 1
+ #define CONFIG_HID_XINMO_MODULE 1
+ #define CONFIG_INFINIBAND_BNXT_RE_MODULE 1
+@@ -2591,7 +2591,7 @@
+ #define CONFIG_HID_GREENASIA_MODULE 1
+ #define CONFIG_ORINOCO_USB_MODULE 1
+ #define CONFIG_TOUCHSCREEN_ILI210X_MODULE 1
+-#define CONFIG_XEN_ACPI_PROCESSOR_MODULE 1
++#define CONFIG_XEN_ACPI_PROCESSOR 1
+ #define CONFIG_INTEGRITY_ASYMMETRIC_KEYS 1
+ #define CONFIG_SERIAL_RP2_NR_UARTS 32
+ #define CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE 0x01b6
+@@ -4199,7 +4199,7 @@
+ #define CONFIG_USB_F_UAC1_LEGACY_MODULE 1
+ #define CONFIG_ATA_VERBOSE_ERROR 1
+ #define CONFIG_ISDN_DRV_AVMB1_B1PCMCIA_MODULE 1
+-#define CONFIG_XEN_BLKDEV_FRONTEND_MODULE 1
++#define CONFIG_XEN_BLKDEV_FRONTEND 1
+ #define CONFIG_NF_CONNTRACK_SNMP_MODULE 1
+ #define CONFIG_CM3232_MODULE 1
+ #define CONFIG_GREYBUS_AUDIO_MODULE 1
+@@ -5200,7 +5200,7 @@
+ #define CONFIG_ISDN_DIVAS_USERIDI_MODULE 1
+ #define CONFIG_INTEL_MIC_CARD_MODULE 1
+ #define CONFIG_DVB_LNBP21_MODULE 1
+-#define CONFIG_XEN_NETDEV_FRONTEND_MODULE 1
++#define CONFIG_XEN_NETDEV_FRONTEND 1
+ #define CONFIG_DVB_TDA10048_MODULE 1
+ #define CONFIG_INPUT_FF_MEMLESS_MODULE 1
+ #define CONFIG_PARAVIRT_CLOCK 1
+diff -wbur -X excludes /root/kernel/linux-4.16.1.origin/include/generated/compile.h /root/kernel/linux-4.16.1/include/generated/compile.h
+--- /root/kernel/linux-4.16.1.origin/include/generated/compile.h	2018-09-21 14:08:09.000000000 +0900
++++ /root/kernel/linux-4.16.1/include/generated/compile.h	2020-01-27 15:24:39.299134482 +0900
+@@ -1,7 +1,7 @@
+-/* This file is auto generated, version 1 */
++/* This file is auto generated, version 2 */
+ /* SMP */
+ #define UTS_MACHINE "x86_64"
+-#define UTS_VERSION "#1 SMP Mon Sep 3 21:22:45 KST 2018"
++#define UTS_VERSION "#2 SMP Mon Jan 27 15:24:39 KST 2020"
+ #define LINUX_COMPILE_BY "root"
+-#define LINUX_COMPILE_HOST "tyan"
+-#define LINUX_COMPILER "gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.10)"
++#define LINUX_COMPILE_HOST "Silver"
++#define LINUX_COMPILER "gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.12)"
