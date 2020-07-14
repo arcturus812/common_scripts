@@ -4,12 +4,15 @@ ENV_TARGET=env_kernel.rc
 source $ENV_TARGET &&
     echo -e "[PHW]ENV sourced ${myGR}$ENV_TARGET${myNC}"
 CUR_DIR=`pwd`
-
+echo -e "build target: $KERNEL_HOME"
 echo -e "[PHW]Enable automotive ${myRED}REBOOT?${myNC} Yes/No"
 askY
 
 cd $KERNEL_HOME &&
     echo -e "[PHW]move dir into ${myBL}$KERNEL_HOME${myNC}"
+
+# cd $KERNEL_ORIGIN &&
+#     echo -e "[PHW]move dir into ${myBL}$KERNEL_ORIGIN${myNC}"
 
 make -j8 | tee build.log &&
     make modules_install -j8 | tee module_install.log &&
