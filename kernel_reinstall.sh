@@ -15,9 +15,9 @@ cd $KERNEL_HOME &&
 # cd $KERNEL_ORIGIN &&
 #     echo -e "[PHW]move dir into ${myBL}$KERNEL_ORIGIN${myNC}"
 
-make -j6 | tee build.log &&
-    make modules_install -j6 | tee module_install.log &&
-    make install -j6 | tee install.log&&
+make -j$(nproc) | tee build.log &&
+    make modules_install -j$(nproc) | tee module_install.log &&
+    make install -j$(nproc) | tee install.log&&
     echo -e "[PHW]${myGR}SUCCESS${myNC} to kernel install" &&
     update-grub2 > /dev/null &&
     echo -e "[PHW]${myGR}SUCCESS${myNC} to grub2-update"
