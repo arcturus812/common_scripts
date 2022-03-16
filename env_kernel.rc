@@ -1,1 +1,2 @@
-export KERNEL_HOME=/home/caslab/kernel/linux-4.16.1
+export KERNEL_HOME=/root/kernel/linux-5.16.14
+export KERNEL_ORIGIN=/root/kernel/linux-5.16.14_origin
